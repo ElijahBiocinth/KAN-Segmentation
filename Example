@@ -1,0 +1,121 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torchvision
+import torchvision.transforms as transforms
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+import torch
+from torch.utils.data import Dataset
+from torchvision import transforms
+from sklearn.model_selection import train_test_split
+import os
+import numpy as np
+import cv2
+
+
+train_path = "/home/jovyan/dapi/cell_nuclei/"
+train_dir = os.listdir(train_path)
+X_train = np.zeros((len(train_dir), 256, 256, 3), dtype=np.uint8)
+Y_train = np.zeros((len(train_dir), 256, 256, 1), dtype=np.bool_)
+
+
+for i, name in enumerate(train_dir):
+    path = train_path + name
+    img_real = cv2.imread(path+'/images/'+ name +'.png')
+    img_real = cv2.resize(img_real, (256, 256))
+    X_train[i] = img_real
+    #print(f"{name}: {img_real.shape}")
+
+    img_segment_full = np.zeros((256, 256 , 1), dtype=bool)
+    segment_path = path+'/masks/'
+    for name in os.listdir(segment_path):
+        img_segment = cv2.imread(segment_path + name, 0)
+        img_segment = cv2.resize(img_segment, (256, 256))
+        img_segment = np.expand_dims(img_segment, axis=-1)
+        img_segment_full = np.maximum(img_segment_full, img_segment)
+    Y_train[i] = img_segment_full
+
+class CustomDataset(Dataset):
+    def __init__(self, images, masks, transform=None, target_transform=None):
+        self.images = images
+        self.masks = masks
+        self.transform = transform
+        self.target_transform = target_transform
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        image = self.images[idx]
+        mask = self.masks[idx]
+        if self.transform:
+            image = self.transform(image)
+        if self.target_transform:
+            mask = self.target_transform(mask)
+        return image, mask
+
+transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Lambda(lambda x: x.float()),   
+])
+
+target_transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Lambda(lambda x: x.float()),
+])
+
+train, val, y_train, y_val = train_test_split(X_train, Y_train, test_size=0.2, random_state=10)
+train_dataset = CustomDataset(train, y_train, transform=transform, target_transform=target_transform)
+val_dataset = CustomDataset(val, y_val, transform=transform, target_transform=target_transform)
+
+trainloader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+valloader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+
+
+model = KAN([256*256 * 3, 64, 256 * 256])  # Assuming the output size of ConvNet is 128
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+
+
+optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
+criterion = nn.BCEWithLogitsLoss()
+
+
+for epoch in range(50):
+    model.train()
+    train_loss = 0
+    train_accuracy = 0
+    for images, masks in trainloader:
+        images = images.view(-1, 256 * 256 * 3).to(device)
+        masks = masks.to(device)
+        optimizer.zero_grad()
+        output = model(images)
+        target = output.view(1, 1, 256, 256)
+        loss = criterion(target, masks)
+        loss.backward()
+        optimizer.step()
+        train_loss += loss.item()
+        train_accuracy += ((target.sigmoid() > 0.5) == masks).float().mean().item()
+
+    train_loss /= len(trainloader)
+    train_accuracy /= len(trainloader)
+    model.eval()
+    val_loss = 0
+    val_accuracy = 0
+    with torch.no_grad():
+        for images, masks in valloader:
+            images = images.view(-1, 256 * 256 * 3).to(device)
+            masks = masks.to(device)
+            output = model(images)
+            target = output.view(1, 1, 256, 256)
+            val_loss += criterion(target, masks).item()
+            val_accuracy += ((target.sigmoid() > 0.5) == masks).float().mean().item()
+    val_loss /= len(valloader)
+    val_accuracy /= len(valloader)
+    scheduler.step()
+
+    print(
+        f"Epoch {epoch + 1}, Train Loss: {train_loss}, Train Accuracy: {train_accuracy}, Val Loss: {val_loss}, Val Accuracy: {val_accuracy}"
+    )
