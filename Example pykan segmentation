@@ -11,7 +11,6 @@ from sklearn.model_selection import train_test_split
 from torchvision import transforms
 import os
 
-# Установка устройства
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def preprocess_data(data):
@@ -21,7 +20,7 @@ def preprocess_data(data):
         path = train_path + name
         img_real = cv2.imread(path+'/images/'+ name +'.png')
         img_real = cv2.resize(img_real, (128, 128))
-        img_real = img_real.flatten() / 255.0  # Преобразование в одномерный вектор и нормализация
+        img_real = img_real.flatten() / 255.0 
         images.append(img_real)
 
         img_segment_full = np.zeros((128, 128), dtype=bool)
@@ -30,15 +29,14 @@ def preprocess_data(data):
             img_segment = cv2.imread(segment_path + name, 0)
             img_segment = cv2.resize(img_segment, (128, 128))
             img_segment_full = np.maximum(img_segment_full, img_segment)
-        labels.append(img_segment_full.flatten().astype(np.float32))  # Преобразование в одномерный вектор
+        labels.append(img_segment_full.flatten()) 
     return np.array(images), np.array(labels)
 
-# Load dataset
 train_path = "/home/jovyan/dapi/cell_nuclei/"
 train_dir = os.listdir(train_path)
 
 train_images, train_labels = preprocess_data(train_dir)
-test_images, test_labels = preprocess_data(train_dir)  # Используем тот же набор данных для теста
+test_images, test_labels = preprocess_data(train_dir)
 
 dataset = {
     "train_input": torch.from_numpy(train_images).float(),
@@ -58,10 +56,8 @@ results = model.train(
     batch=1,
     loss_fn=torch.nn.BCEWithLogitsLoss(),
 )
-# Сохранение модели
 torch.save(model.state_dict(), "kan.pth")
 
-# Загрузка модели и тестирование
 model = KAN(width=[128*128*3, 16, 128*128], device=device)
 model.load_state_dict(torch.load("kan.pth"))
 
