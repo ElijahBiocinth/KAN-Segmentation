@@ -1,3 +1,4 @@
+# Train on MNIST
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -12,9 +13,9 @@ from sklearn.model_selection import train_test_split
 import os
 import numpy as np
 import cv2
+import matplotlib.pyplot as plt
 
-
-train_path = "/home/jovyan/dapi/cell_nuclei/"
+train_path = "path..."
 train_dir = os.listdir(train_path)
 X_train = np.zeros((len(train_dir), 256, 256, 3), dtype=np.uint8)
 Y_train = np.zeros((len(train_dir), 256, 256, 1), dtype=np.bool_)
@@ -77,13 +78,27 @@ model = KAN([256*256 * 3, 64, 256 * 256])  # Assuming the output size of ConvNet
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
-
 optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
 scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
 criterion = nn.BCEWithLogitsLoss()
 
+def show_image_mask(image, mask):
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+    
+    # Отображение изображения
+    axes[0].imshow(target.squeeze().cpu().numpy())
+    axes[0].set_title('Target')
+    axes[0].axis('off')
+    
+    # Отображение маски
+    axes[1].imshow(mask.squeeze().cpu().numpy())
+    axes[1].set_title('Mask')
+    axes[1].axis('off')
+    
+    plt.show()
 
 for epoch in range(50):
+    # Train
     model.train()
     train_loss = 0
     train_accuracy = 0
@@ -98,9 +113,9 @@ for epoch in range(50):
         optimizer.step()
         train_loss += loss.item()
         train_accuracy += ((target.sigmoid() > 0.5) == masks).float().mean().item()
-
     train_loss /= len(trainloader)
     train_accuracy /= len(trainloader)
+
     model.eval()
     val_loss = 0
     val_accuracy = 0
@@ -110,6 +125,7 @@ for epoch in range(50):
             masks = masks.to(device)
             output = model(images)
             target = output.view(1, 1, 256, 256)
+            show_image_mask(target[0], masks[0])
             val_loss += criterion(target, masks).item()
             val_accuracy += ((target.sigmoid() > 0.5) == masks).float().mean().item()
     val_loss /= len(valloader)
