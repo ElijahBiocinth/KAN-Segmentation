@@ -1,4 +1,4 @@
-This repository contains a dataset and an example KAN implementation for the segmentation process by used V100.
+This repository contains a dataset and an example KAN implementation for the cell nucleus segmentation process by used V100.
 
 It is based on https://github.com/KindXiaoming/pykan/tree/master and
 https://github.com/Blealtan/efficient-kan/tree/master
